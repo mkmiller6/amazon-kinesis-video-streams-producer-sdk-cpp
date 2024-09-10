@@ -326,11 +326,11 @@ void kinesis_video_init(CustomData *data) {
             sessionTokenStr = "";
         }
 
-        data->credential.reset(new Credentials(string(accessKey),
+        credentials_.reset(new Credentials(string(accessKey),
                                                string(secretKey),
                                                sessionTokenStr,
                                                std::chrono::seconds(DEFAULT_CREDENTIAL_EXPIRATION_SECONDS)));
-        credential_provider.reset(new SampleCredentialProvider(*data->credential.get()));
+        credential_provider.reset(new SampleCredentialProvider(*credentials_.get()));
 
     } else if (nullptr != (iot_get_credential_endpoint = getenv("IOT_GET_CREDENTIAL_ENDPOINT")) &&
                nullptr != (cert_path = getenv("CERT_PATH")) &&
@@ -342,8 +342,7 @@ void kinesis_video_init(CustomData *data) {
                                                                 cert_path,
                                                                 private_key_path,
                                                                 role_alias,
-                                                                ca_cert_path,
-                                                                data->stream_name));
+                                                                ca_cert_path));
 
     } else {
         LOG_AND_THROW("No valid credential method was found");
