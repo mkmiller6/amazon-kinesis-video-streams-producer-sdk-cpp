@@ -73,10 +73,12 @@ namespace com { namespace amazonaws { namespace kinesis { namespace video {
     };
 
     class SampleStreamCallbackProvider : public StreamCallbackProvider {
+        UINT64 custom_data_;
     public:
+        SampleStreamCallbackProvider(UINT64 custom_data) : custom_data_(custom_data) {}
 
         UINT64 getCallbackCustomData() override {
-            return reinterpret_cast<UINT64> (this);
+            return custom_data_;
         }
 
         StreamConnectionStaleFunc getStreamConnectionStaleCallback() override {
