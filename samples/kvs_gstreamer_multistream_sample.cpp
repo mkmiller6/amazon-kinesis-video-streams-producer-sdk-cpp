@@ -73,12 +73,10 @@ namespace com { namespace amazonaws { namespace kinesis { namespace video {
     };
 
     class SampleStreamCallbackProvider : public StreamCallbackProvider {
-        UINT64 custom_data_;
     public:
-        SampleStreamCallbackProvider(UINT64 custom_data) : custom_data_(custom_data) {}
 
         UINT64 getCallbackCustomData() override {
-            return custom_data_;
+            return reinterpret_cast<UINT64> (this);
         }
 
         StreamConnectionStaleFunc getStreamConnectionStaleCallback() override {
@@ -292,8 +290,7 @@ static void error_cb(GstBus *bus, GstMessage *msg, CustomData *data) {
 void kinesis_video_init(CustomData *data) {
     unique_ptr<DeviceInfoProvider> device_info_provider(new SampleDeviceInfoProvider());
     unique_ptr<ClientCallbackProvider> client_callback_provider(new SampleClientCallbackProvider());
-    unique_ptr<StreamCallbackProvider> stream_callback_provider(new SampleStreamCallbackProvider(
-            reinterpret_cast<UINT64>(data)));
+    unique_ptr<StreamCallbackProvider> stream_callback_provider(new SampleStreamCallbackProvider());
 
     char const *accessKey;
     char const *secretKey;
