@@ -7,6 +7,7 @@
 #include <fstream>
 #include <vector>
 #include <map>
+#include <IotCertCredentialProvider.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -53,6 +54,7 @@ LOGGER_TAG("com.amazonaws.kinesis.video.gstreamer");
 #define DEFAULT_BUFFER_SIZE (1 * 1024 * 1024)
 #define DEFAULT_STORAGE_SIZE (128 * 1024 * 1024)
 #define DEFAULT_ROTATION_TIME_SECONDS 3600
+#define DEFAULT_CREDENTIAL_EXPIRATION_SECONDS 180
 
 namespace com { namespace amazonaws { namespace kinesis { namespace video {
 
@@ -288,7 +290,8 @@ static void error_cb(GstBus *bus, GstMessage *msg, CustomData *data) {
 void kinesis_video_init(CustomData *data) {
     unique_ptr<DeviceInfoProvider> device_info_provider(new SampleDeviceInfoProvider());
     unique_ptr<ClientCallbackProvider> client_callback_provider(new SampleClientCallbackProvider());
-    unique_ptr<StreamCallbackProvider> stream_callback_provider(new SampleStreamCallbackProvider());
+    unique_ptr<StreamCallbackProvider> stream_callback_provider(new SampleStreamCallbackProvider(
+            reinterpret_cast<UINT64>(data)));
 
     char const *accessKey;
     char const *secretKey;
@@ -296,31 +299,56 @@ void kinesis_video_init(CustomData *data) {
     char const *defaultRegion;
     string defaultRegionStr;
     string sessionTokenStr;
-    if (nullptr == (accessKey = getenv(ACCESS_KEY_ENV_VAR))) {
-        accessKey = "";
-    }
 
-    if (nullptr == (secretKey = getenv(SECRET_KEY_ENV_VAR))) {
-        secretKey = "";
-    }
+    char const *iot_get_credential_endpoint;
+    char const *cert_path;
+    char const *private_key_path;
+    char const *role_alias;
+    char const *ca_cert_path;
 
-    if (nullptr == (sessionToken = getenv(SESSION_TOKEN_ENV_VAR))) {
-        sessionTokenStr = "";
-    } else {
-        sessionTokenStr = string(sessionToken);
-    }
+    unique_ptr<CredentialProvider> credential_provider;
 
     if (nullptr == (defaultRegion = getenv(DEFAULT_REGION_ENV_VAR))) {
         defaultRegionStr = DEFAULT_AWS_REGION;
     } else {
         defaultRegionStr = string(defaultRegion);
     }
+    LOG_INFO("Using region: " << defaultRegionStr);
 
-    credentials_.reset(new Credentials(string(accessKey),
-                                       string(secretKey),
-                                       sessionTokenStr,
-                                       std::chrono::seconds(180)));
-    unique_ptr<CredentialProvider> credential_provider(new SampleCredentialProvider(*credentials_.get()));
+    if (nullptr != (accessKey = getenv(ACCESS_KEY_ENV_VAR)) &&
+        nullptr != (secretKey = getenv(SECRET_KEY_ENV_VAR))) {
+
+        LOG_INFO("Using aws credentials for Kinesis Video Streams");
+        if (nullptr != (sessionToken = getenv(SESSION_TOKEN_ENV_VAR))) {
+            LOG_INFO("Session token detected.");
+            sessionTokenStr = string(sessionToken);
+        } else {
+            LOG_INFO("No session token was detected.");
+            sessionTokenStr = "";
+        }
+
+        data->credential.reset(new Credentials(string(accessKey),
+                                               string(secretKey),
+                                               sessionTokenStr,
+                                               std::chrono::seconds(DEFAULT_CREDENTIAL_EXPIRATION_SECONDS)));
+        credential_provider.reset(new SampleCredentialProvider(*data->credential.get()));
+
+    } else if (nullptr != (iot_get_credential_endpoint = getenv("IOT_GET_CREDENTIAL_ENDPOINT")) &&
+               nullptr != (cert_path = getenv("CERT_PATH")) &&
+               nullptr != (private_key_path = getenv("PRIVATE_KEY_PATH")) &&
+               nullptr != (role_alias = getenv("ROLE_ALIAS")) &&
+               nullptr != (ca_cert_path = getenv("CA_CERT_PATH"))) {
+        LOG_INFO("Using IoT credentials for Kinesis Video Streams");
+        credential_provider.reset(new IotCertCredentialProvider(iot_get_credential_endpoint,
+                                                                cert_path,
+                                                                private_key_path,
+                                                                role_alias,
+                                                                ca_cert_path,
+                                                                data->stream_name));
+
+    } else {
+        LOG_AND_THROW("No valid credential method was found");
+    }
 
     data->kinesis_video_producer = KinesisVideoProducer::createSync(std::move(device_info_provider),
                                                                     std::move(client_callback_provider),
